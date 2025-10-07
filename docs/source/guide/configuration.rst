@@ -232,6 +232,20 @@ You can set configuration settings using system-wide environment variables. Thes
     When set it will be appended to the User-Agent header of every request
     in the form of App/{AppId}.
 
+``AWS_SIGV4A_SIGNING_REGION_SET``
+    A comma-delimited list of regions to sign when signing with SigV4a.  For more
+    information, see the ``sigv4a_signing_region_set`` configuration file section.
+
+``AWS_REQUEST_CHECKSUM_CALCULATION``
+    Determines when a checksum will be calculated for request payloads. For more
+    information, see the ``request_checksum_calculation`` configuration file section.
+
+
+``AWS_RESPONSE_CHECKSUM_VALIDATION``
+    Determines when checksum validation will be performed on response payloads. For more
+    information, see the ``response_checksum_validation`` configuration file section.
+
+
 Using a configuration file
 --------------------------
 
@@ -259,7 +273,7 @@ in the ``~/.aws/config`` file.
 
         [default]
         region = us-east-1
-        api_versions = 
+        api_versions =
             ec2 = 2015-03-01
             cloudfront = 2015-09-17
 
@@ -283,10 +297,10 @@ in the ``~/.aws/config`` file.
     an IAM role attached to either an EC2 instance profile or an Amazon ECS
     container. In such a scenario, use the ``credential_source`` setting to
     specify where to find the credentials.
-    
+
     The ``credential_source`` and ``source_profile`` settings are mutually
     exclusive.
-    
+
     The following values are supported.
 
         ``Ec2InstanceMetadata``
@@ -316,7 +330,7 @@ in the ``~/.aws/config`` file.
     Serial number of the Amazon Resource Name (ARN) of a multi-factor authentication (MFA) device to use when assuming a role.
 ``parameter_validation``
     Disable parameter validation (default is true, parameters are
-    validated).  This is a Boolean value that 
+    validated).  This is a Boolean value that
     is either ``true`` or ``false``.  Whenever you make an
     API call using a client, the parameters you provide are run through
     a set of validation checks, including (but not limited to) required
@@ -340,7 +354,7 @@ in the ``~/.aws/config`` file.
 ``s3``
     Set Amazon S3-specific configuration data. Typically, these values do not need
     to be set.
-    
+
     The ``s3`` settings are nested configuration values that require special
     formatting in the AWS configuration file. If the values are set by the
     AWS CLI or programmatically by an SDK, the formatting is handled
@@ -351,7 +365,7 @@ in the ``~/.aws/config`` file.
 
         [default]
         region = us-east-1
-        s3 = 
+        s3 =
             addressing_style = path
             signature_version = s3v4
 
@@ -360,25 +374,25 @@ in the ``~/.aws/config`` file.
       The following values are supported.
 
         ``auto``
-            (Default) Attempts to use ``virtual``, but falls back to ``path`` 
+            (Default) Attempts to use ``virtual``, but falls back to ``path``
             if necessary.
-      
+
         ``path``
             Bucket name is included in the URI path.
 
         ``virtual``
             Bucket name is included in the hostname.
 
-    * ``payload_signing_enabled``: Specifies whether to include an SHA-256 
+    * ``payload_signing_enabled``: Specifies whether to include an SHA-256
       checksum with Amazon Signature Version 4 payloads. Valid settings are
       ``true`` or ``false``.
 
       For streaming uploads (``UploadPart`` and ``PutObject``) that use HTTPS
       and include a ``content-md5`` header, this setting is disabled by default.
-    * ``signature_version``: The AWS signature version to use when signing 
+    * ``signature_version``: The AWS signature version to use when signing
       requests. When necessary, Boto automatically switches the signature
       version to an appropriate value. The following values are recognized.
-    
+
         ``s3v4``
             (Default) Signature Version 4
 
@@ -407,7 +421,7 @@ in the ``~/.aws/config`` file.
 ``sts_regional_endpoints``
     Sets AWS STS endpoint resolution logic. This configuration can also be set
     using the environment variable ``AWS_STS_REGIONAL_ENDPOINTS``. By default,
-    this configuration option is set to ``legacy``. Valid values are the following:
+    this configuration option is set to ``regional``. Valid values are the following:
 
     * ``regional``
         Uses the STS endpoint that corresponds to the configured Region. For
@@ -466,7 +480,165 @@ in the ``~/.aws/config`` file.
           functionality of ``standard`` mode with automatic client-side
           throttling.  This is a provisional mode whose behavior might change.
 
+``sigv4a_signing_region_set``
+    A comma-delimited list of regions use when signing with SigV4a. If this is not set,
+    the SDK will check if the service has modeled a default; if none is found, this will
+    default to ``*``.
+
+``request_checksum_calculation``
+    Determines when a checksum will be calculated for request payloads. Valid values are:
+
+    * ``when_supported`` -- When set, a checksum will be calculated for
+      all request payloads of operations modeled with the ``httpChecksum``
+      trait where ``requestChecksumRequired`` is ``true`` or a
+      ``requestAlgorithmMember`` is modeled.
+
+    * ``when_required`` -- When set, a checksum will only be calculated
+      for request payloads of operations modeled with the ``httpChecksum``
+      trait where ``requestChecksumRequired`` is ``true`` or where a
+      ``requestAlgorithmMember`` is modeled and supplied.
+
+``response_checksum_validation``
+    Determines when checksum validation will be performed on response payloads. Valid values are:
+
+    * ``when_supported`` -- When set, checksum validation is performed on
+      all response payloads of operations modeled with the ``httpChecksum``
+      trait where ``responseAlgorithms`` is modeled, except when no modeled
+      checksum algorithms are supported.
+
+    * ``when_required`` -- When set, checksum validation is not performed
+      on response payloads of operations unless the checksum algorithm is
+      supported and the ``requestValidationModeMember`` member is set to ``ENABLED``.
+
+``use_dualstack_endpoint``
+    When ``true``, dualstack endpoint resolution is enabled.  Valid values are ``true`` or ``false``.  Default : ``false``.
 
 .. _IAM Roles for Amazon EC2: http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html
 .. _Using IAM Roles: http://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_use.html
 .. _Sourcing Credentials with an External Process: https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-sourcing-external.html
+
+
+Using Account ID-Based Endpoints
+--------------------------------
+Boto3 supports account ID-based endpoints, which improve performance and scalability by using your AWS account ID to streamline request routing for services that support this feature. When Boto3 resolves credentials containing an account ID, it automatically constructs an account ID-based endpoint instead of a regional endpoint.
+
+Account ID-based endpoints follow this format:
+
+.. code-block:: shell
+
+    https://<account-id>.myservice.<region>.amazonaws.com
+
+
+* ``<account-id>`` is the AWS account ID sourced from your credentials.
+* ``<region>`` is the AWS region where the request is being made.
+
+
+Supported Credential Providers
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Boto3 can automatically construct account ID-based endpoints by sourcing the AWS account ID from the following places:
+
+* Credentials set using the ``boto3.client()`` method
+* Credentials set when creating a ``Session`` object
+* Environment variables
+* Assume role provider
+* Assume role with web identity provider
+* AWS IAM Identity Center credential provider
+* Shared credential file (``~/.aws/credentials``)
+* AWS config file (``~/.aws/config``)
+* Container credential provider
+
+You can read more about these locations in the :ref:`guide_credentials` guide.
+
+
+Configuring Account ID
+~~~~~~~~~~~~~~~~~~~~~~
+
+You can provide an account ID along with your AWS credentials using one of the following:
+
+Passing it as a parameter when creating clients:
+
+.. code-block:: python
+
+    import boto3
+
+    client = boto3.client(
+        'dynamodb',
+        aws_access_key_id=ACCESS_KEY,
+        aws_secret_access_key=SECRET_KEY,
+        aws_account_id=ACCOUNT_ID
+    )
+
+Passing it as a parameter when creating a ``Session`` object:
+
+.. code-block:: python
+
+    import boto3
+
+    session = boto3.Session(
+        aws_access_key_id=ACCESS_KEY,
+        aws_secret_access_key=SECRET_KEY,
+        aws_account_id=ACCOUNT_ID
+    )
+
+Setting an environment variable:
+
+.. code-block:: shell
+
+    export AWS_ACCESS_KEY_ID=<ACCESS_KEY>
+    export AWS_SECRET_ACCESS_KEY=<SECRET_KEY>
+    export AWS_ACCOUNT_ID=<ACCOUNT_ID>
+
+Setting it in the shared credentials or config file:
+
+.. code-block:: ini
+
+    [default]
+    aws_access_key_id=foo
+    aws_secret_access_key=bar
+    aws_account_id=baz
+
+
+Configuring Endpoint Routing Behavior
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The account ID endpoint mode is a setting that can be used to turn off account ID-based endpoint routing if necessary.
+
+Valid values are:
+
+* ``preferred`` – The endpoint should include account ID if available.
+* ``disabled`` – A resolved endpoint doesn't include account ID.
+* ``required`` – The endpoint must include account ID. If the account ID isn't available, the SDK throws an error.
+
+.. note::
+
+    The default behavior in Boto3 is ``preferred``.
+
+
+You can configure the setting using one of the following:
+
+Setting it in the ``Config`` object when creating clients:
+
+.. code-block:: python
+
+    import boto3
+    from botocore.config import Config
+
+    my_config = Config(
+        account_id_endpoint_mode = 'disabled'
+    )
+
+    client = boto3.client('dynamodb', config=my_config)
+
+Setting an environment variable:
+
+.. code-block:: shell
+
+    export AWS_ACCOUNT_ID_ENDPOINT_MODE=disabled
+
+Setting it in the shared credentials or config file:
+
+.. code-block:: ini
+
+    [default]
+    account_id_endpoint_mode=disabled

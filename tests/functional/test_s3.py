@@ -16,6 +16,7 @@ import botocore
 import botocore.stub
 import pytest
 from botocore.config import Config
+from botocore.httpchecksum import DEFAULT_CHECKSUM_ALGORITHM
 from botocore.stub import Stubber
 
 import boto3.session
@@ -86,7 +87,10 @@ class BaseTransferTest(unittest.TestCase):
             expected_params=expected_params,
         )
 
-    def stub_create_multipart_upload(self):
+    def stub_create_multipart_upload(
+        self,
+        extra_expected_params=None,
+    ):
         # Add the response and assert params for CreateMultipartUpload
         create_upload_response = {
             "Bucket": self.bucket,
@@ -97,13 +101,17 @@ class BaseTransferTest(unittest.TestCase):
             "Bucket": self.bucket,
             "Key": self.key,
         }
+        if extra_expected_params:
+            expected_params.update(extra_expected_params)
         self.stubber.add_response(
             method='create_multipart_upload',
             service_response=create_upload_response,
             expected_params=expected_params,
         )
 
-    def stub_complete_multipart_upload(self, parts):
+    def stub_complete_multipart_upload(
+        self, parts, extra_expected_params=None
+    ):
         complete_upload_response = {
             "Location": "us-west-2",
             "Bucket": self.bucket,
@@ -116,6 +124,8 @@ class BaseTransferTest(unittest.TestCase):
             "MultipartUpload": {"Parts": parts},
             "UploadId": self.upload_id,
         }
+        if extra_expected_params:
+            expected_params.update(extra_expected_params)
 
         self.stubber.add_response(
             method='complete_multipart_upload',
@@ -256,6 +266,7 @@ class TestUploadFileobj(BaseTransferTest):
             "Bucket": self.bucket,
             "Key": self.key,
             "Body": botocore.stub.ANY,
+            "ChecksumAlgorithm": DEFAULT_CHECKSUM_ALGORITHM,
         }
         self.stubber.add_response(
             method='put_object',
@@ -267,6 +278,7 @@ class TestUploadFileobj(BaseTransferTest):
         upload_part_response = {
             'ETag': self.etag,
             'ResponseMetadata': {'HTTPStatusCode': 200},
+            'ChecksumCRC32': f'sum{part_number}==',
         }
         expected_params = {
             "Bucket": self.bucket,
@@ -274,6 +286,7 @@ class TestUploadFileobj(BaseTransferTest):
             "Body": botocore.stub.ANY,
             "PartNumber": part_number,
             "UploadId": self.upload_id,
+            'ChecksumAlgorithm': 'CRC32',
         }
         self.stubber.add_response(
             method='upload_part',
@@ -282,7 +295,11 @@ class TestUploadFileobj(BaseTransferTest):
         )
 
     def stub_multipart_upload(self, num_parts):
-        self.stub_create_multipart_upload()
+        self.stub_create_multipart_upload(
+            extra_expected_params={
+                "ChecksumAlgorithm": DEFAULT_CHECKSUM_ALGORITHM,
+            }
+        )
 
         # Add the responses for each UploadPartCopy
         parts = []
@@ -290,7 +307,13 @@ class TestUploadFileobj(BaseTransferTest):
             # Fill in the parts
             part_number = i + 1
             self.stub_upload_part(part_number=part_number)
-            parts.append({'ETag': self.etag, 'PartNumber': part_number})
+            parts.append(
+                {
+                    'ETag': self.etag,
+                    'PartNumber': part_number,
+                    'ChecksumCRC32': f'sum{part_number}==',
+                }
+            )
 
         self.stub_complete_multipart_upload(parts)
 
@@ -361,13 +384,16 @@ class TestDownloadFileobj(BaseTransferTest):
         self.stub_head(content_length=len(self.contents))
         self.stub_get_object(self.contents)
 
-    def stub_get_object(self, full_contents, start_byte=0, end_byte=None):
+    def stub_get_object(
+        self, full_contents, start_byte=0, end_byte=None, extra_params=None
+    ):
         """
         Stubs out the get_object operation.
 
         :param full_contents: The FULL contents of the object
         :param start_byte: The first byte to grab.
         :param end_byte: The last byte to grab.
+        :param extra_params: Extra request parameters to expect.
         """
         get_object_response = {}
         expected_params = {}
@@ -406,6 +432,8 @@ class TestDownloadFileobj(BaseTransferTest):
             }
         )
         expected_params.update({"Bucket": self.bucket, "Key": self.key})
+        if extra_params is not None:
+            expected_params.update(extra_params)
 
         self.stubber.add_response(
             method='get_object',
@@ -413,7 +441,9 @@ class TestDownloadFileobj(BaseTransferTest):
             expected_params=expected_params,
         )
 
-    def stub_multipart_download(self, contents, part_size, num_parts):
+    def stub_multipart_download(
+        self, contents, part_size, num_parts, extra_params=None
+    ):
         self.stub_head(content_length=len(contents))
 
         for i in range(num_parts):
@@ -423,6 +453,7 @@ class TestDownloadFileobj(BaseTransferTest):
                 full_contents=contents,
                 start_byte=start_byte,
                 end_byte=end_byte,
+                extra_params=extra_params,
             )
 
     def test_client_download(self):
@@ -463,7 +494,10 @@ class TestDownloadFileobj(BaseTransferTest):
     def test_multipart_download(self):
         self.contents = b'A' * 55
         self.stub_multipart_download(
-            contents=self.contents, part_size=5, num_parts=11
+            contents=self.contents,
+            part_size=5,
+            num_parts=11,
+            extra_params={'IfMatch': self.etag},
         )
         transfer_config = TransferConfig(
             multipart_chunksize=5, multipart_threshold=1, max_concurrency=1
@@ -483,7 +517,10 @@ class TestDownloadFileobj(BaseTransferTest):
     def test_download_progress(self):
         self.contents = b'A' * 55
         self.stub_multipart_download(
-            contents=self.contents, part_size=5, num_parts=11
+            contents=self.contents,
+            part_size=5,
+            num_parts=11,
+            extra_params={'IfMatch': self.etag},
         )
         transfer_config = TransferConfig(
             multipart_chunksize=5, multipart_threshold=1, max_concurrency=1
